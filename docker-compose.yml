@@ -1,0 +1,67 @@
+version: '3.8'
+
+services:
+  # RabbitMQ
+  rabbitmq:
+    image: rabbitmq:3.12-management
+    container_name: notificacoes-rabbitmq
+    hostname: rabbitmq
+    ports:
+      - "5672:5672"     # AMQP port
+      - "15672:15672"   # Management UI
+    environment:
+      RABBITMQ_DEFAULT_USER: admin
+      RABBITMQ_DEFAULT_PASS: admin123
+      RABBITMQ_DEFAULT_VHOST: /
+    volumes:
+      - rabbitmq_data:/var/lib/rabbitmq
+    networks:
+      - notificacoes-network
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+
+  # Aplicação Spring Boot
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: notificacoes-app
+    ports:
+      - "8080:8080"
+    environment:
+      # Spring profiles
+      SPRING_PROFILES_ACTIVE: docker
+
+      # RabbitMQ connection
+      SPRING_RABBITMQ_HOST: rabbitmq
+      SPRING_RABBITMQ_PORT: 5672
+      SPRING_RABBITMQ_USERNAME: admin
+      SPRING_RABBITMQ_PASSWORD: admin123
+      SPRING_RABBITMQ_VIRTUAL_HOST: /
+
+      # JVM options
+      JAVA_OPTS: "-Xmx512m -Xms256m -Dspring.profiles.active=docker"
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+    networks:
+      - notificacoes-network
+    volumes:
+      - app_logs:/app/logs
+    restart: unless-stopped
+
+# Volumes
+volumes:
+  rabbitmq_data:
+    driver: local
+  app_logs:
+    driver: local
+
+# Networks
+networks:
+  notificacoes-network:
+    driver: bridge
